@@ -4,7 +4,7 @@ ls()
 library(tidyverse)
 library(readxl)
 library(lmtest)
-
+ads
 #### A_Davis #####
 dadosA_davis <- read_excel("dados/Escala Davis/adavis.xlsx")
 
