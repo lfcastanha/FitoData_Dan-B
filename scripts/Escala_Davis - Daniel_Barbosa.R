@@ -4,27 +4,26 @@ ls()
 library(tidyverse)
 library(readxl)
 library(lmtest)
-ads
-#### A_Davis #####
-dadosA_davis <- read_excel("dados/Escala Davis/adavis.xlsx")
+#### A_Davis -------------------------------
+dadosA_davis <- read_excel("dados/Escala Davis/adavis-adapted.xlsx")
 
 df_A_Davis <- dadosA_davis |> 
   mutate(
     # Criar uma coluna com a indentificação do tratamento
     Tratamento = factor(case_when(
-      Adjuvante == "NA" & Taxa == "NA" ~ "1",
-      Adjuvante == "Aureo" & Taxa == "10.0" ~ "2",
-      Adjuvante == "Silwet" & Taxa == "10.0" ~ "3",
-      Adjuvante == "Ochima" & Taxa == "10.0" ~ "4",
-      Adjuvante == "NA" & Taxa == "10.0" ~ "5",
-      Adjuvante == "Aureo" & Taxa == "30.0" ~ "6",
-      Adjuvante == "Silwet" & Taxa == "30.0" ~ "7",
-      Adjuvante == "Ochima" & Taxa == "30.0" ~ "8",
-      Adjuvante == "NA" & Taxa == "30.0" ~ "9",
-      Adjuvante == "Aureo" & Taxa == "120.0" ~ "10",
-      Adjuvante == "Silwet" & Taxa == "120.0" ~ "11",
-      Adjuvante == "Ochima" & Taxa == "120.0" ~ "12",
-      Adjuvante == "NA" & Taxa == "120.0" ~ "13"
+      Adjuvante == "NA" & Taxa == "0" ~ "1",
+      Adjuvante == "Aureo" & Taxa == "10" ~ "2",
+      Adjuvante == "Silwet" & Taxa == "10" ~ "3",
+      Adjuvante == "Ochima" & Taxa == "10" ~ "4",
+      Adjuvante == "NA" & Taxa == "10" ~ "5",
+      Adjuvante == "Aureo" & Taxa == "30" ~ "6",
+      Adjuvante == "Silwet" & Taxa == "30" ~ "7",
+      Adjuvante == "Ochima" & Taxa == "30" ~ "8",
+      Adjuvante == "NA" & Taxa == "30" ~ "9",
+      Adjuvante == "Aureo" & Taxa == "120" ~ "10",
+      Adjuvante == "Silwet" & Taxa == "120" ~ "11",
+      Adjuvante == "Ochima" & Taxa == "120" ~ "12",
+      Adjuvante == "NA" & Taxa == "120" ~ "13"
       )),
     # reorganizar os fatores para ordem crescente de 1 a 13
     Tratamento = fct_relevel(
@@ -32,13 +31,12 @@ df_A_Davis <- dadosA_davis |>
       "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"),
     Bloco = factor(Bloco),
     Sub = factor(Sub))|> 
-  # excluir colunas 
-  select(!c(Taxa, Adjuvante)) |> 
   # alongar df
   pivot_longer(names_to = "dias",
-               values_to = "Escala_Davis",
+               values_to = "Severidade",
                cols = "3DAA":"7DAB") |> 
-  mutate(dias = factor(dias)) |> 
+  mutate(dias = factor(dias),
+         Adjuvante = factor(Adjuvante)) |> 
   rename(planta = "Sub")
 
 
@@ -80,7 +78,7 @@ a = anova(modelo)
 plot(modelo$residuals/sqrt(a$`Mean Sq`[3]), ylab="Resíduos Padronizados")
 abline(h=0)
 
-
+|
 
 #### Testando a distribuição de Poisson #####
 attach(df_A_Davis)
@@ -96,3 +94,100 @@ summary(model2)
 
 model3 <- glm(Escala_Davis ~ Bloco*Tratamento, quasipoisson, df_A_Davis)
 summary(model3)
+
+
+
+#### Script do ChatGPT ---------------------------------------------
+
+library(lme4)  # Para ajustar o modelo linear generalizado misto
+library(lmerTest)  # Para obter valores de p para o GLMM
+library(ggplot2)  # Para visualização dos dados
+
+# Supondo que o seu conjunto de dados se chama 'dados_experimento'
+# E as variáveis são:
+# - Severidade: variável resposta (escala Davis de 0 a 9)
+# - TaxaAplicacao: variável explicativa (taxa de aplicação de pesticida)
+# - Adjuvante: variável explicativa (tipo de adjuvante utilizado)
+# - Bloco: efeito aleatório correspondente aos blocos casualizados
+
+
+# selecionar apenas o dia 3DAA
+df_3DAA_A_Davis <- df_A_Davis |> 
+  filter(dias == "3DAA") |> 
+  mutate(Taxa = factor(Taxa))
+
+# Ajuste do Modelo Linear Generalizado Misto
+glmm_model <- glmer(Severidade ~ Taxa*Adjuvante + (1|Bloco), 
+                    family = poisson(link = "log"), data = df_A_Davis)
+
+
+model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
+summary(model1)
+
+# Resumo do modelo
+summary(glmm_model)
+
+# Verificação dos resíduos
+plot(residuals(glmm_model), main="Resíduos do Modelo GLMM")
+qqnorm(residuals(glmm_model))
+qqline(residuals(glmm_model), col="red")
+
+# Comparação de modelos (opcional)
+# Se você quiser comparar diferentes modelos, por exemplo, com e sem interação:
+glmm_model_sem_interacao <- glmer(Severidade ~ Taxa + Adjuvante + (1|Bloco), 
+                                  family = poisson(link = "log"), data = df_3DAA_A_Davis)
+
+# Comparação usando AIC
+AIC(glmm_model, glmm_model_sem_interacao)
+
+# Análise dos efeitos fixos
+anova(glmm_model)
+
+# Gráfico de efeitos principais (usando ggplot2 para visualização)
+ggplot(dados_chatGPT, aes(x=Taxa, y=Severidade, color=Adjuvante)) +
+  geom_point() +
+  geom_smooth(method="glm", method.args=list(family="poisson"), se=FALSE) +
+  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
+       x="Taxa de Aplicação de Pesticida",
+       y="Severidade dos Danos (Escala Davis)") +
+  theme_minimal()
+
+|> # Se necessário, salvar o modelo ajustado
+save(glmm_model, file = "glmm_modelo_ajustado.RData")  
+         
+
+# Using Flexplot -----------------------------------
+
+library(flexplot)
+
+# Flexplot
+flexplot(Severidade~1, df_A_Davis)
+
+# Flexplot it
+flexplot(Severidade~Taxa | Adjuvante, df_A_Davis, 
+         method = "poisson", jitter = c(0, .2), ghost.line = "gray")
+df_A_Davis |> 
+  mutate(Taxa = factor(Taxa)) |> 
+  ggplot(aes(x = Taxa, y = Severidade))+
+  geom_point()+
+  geom_jitter()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~Adjuvante)
+
+# modeling
+full = glm(Severidade~Adjuvante*Taxa, 
+           df_A_Davis,
+           family = "poisson")
+reduced = glm(Severidade~Adjuvante,
+              df_A_Davis,
+              family = "poisson")
+
+# Visualize the two models
+compare.fits(Severidade~Taxa | Adjuvante, df_A_Davis,
+             full, reduced, jitter = c(0, .1))
+
+# aid with statistics
+model.comparison(full, reduced)
+
+# 
+visualize(full, plot = "model", jitter = c(0, .1))
