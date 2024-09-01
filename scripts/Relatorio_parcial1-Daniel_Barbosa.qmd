@@ -67,283 +67,51 @@ df_A_Davis <- dadosA_davis |>
   mutate(dias = factor(dias),
          Adjuvante = factor(Adjuvante)) |> 
   rename(planta = "Sub")
+
+# selecionar apenas o dia 3DAA
+df_3DAA_A_Davis <- df_A_Davis |> 
+  filter(dias == "3DAA") |> 
+  mutate(Taxa = as.numeric(Taxa))
 ```
 
 # Introdução
 
-Os dados coletados da severidade (Escala Davis) e da contagem de plantas atacaas não seguem uma distribuição normal. Esses dados se enquadram no grupo de "contagem" e, portanto tendem a seguir uma Distribuição de Poisson, em q
+Os dados coletados da severidade (Escala Davis) e da contagem de plantas atacaas não seguem uma distribuição normal, e sim a distribuição de Poisson, em que os valores da variável resposta são números inteiros maiores ou iguais a zero. Nesse tipo de distribuição, números zeros são muito frequentes e, portanto, tendenciam a curva de distribuição para a esquerda.
 
-# Resultados Químicos
-
-As análises foram realizadas em maio de 2024 pelo Laboratório de Análise de Solo, Tecido Vegetal e Fertilizante, do Departamento de Solos, UFV.
+Para analisar esse tipo de dados, é preciso utilizar de uma função de modelos lineares generalizados para encontrar um modelo que melhor se adapte aos resultados, para assim, conseguirmos extrair informações sobre seu comportamento e comparar a interação existente entre as variáveis presentes.
 
 ```{r}
-#| label: boxplot-todos-parametros-e-profundidades
-#| include: false
-
-####################################
-## TODAS AS PROFUNDIDADES ##
-################################
-# pH H2O
-ph_h2o_geral <- df_alongado |> 
-  filter(parametros == "ph_H20") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "pH em H2O",
-       fill = "Talhão")+
-  theme(legend.position = "right",
-        axis.text.x = element_blank())+
-  facet_wrap(~Profundidade, 
-             labeller = as_labeller(c("0-15" = "0-15 cm",
-                                                     "15-30" = "15-30 cm",
-                                                     "40-50" = "40-50 cm")))
-# P
-P_geral <- df_alongado |> 
-  filter(parametros == "P") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "P (mg/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",      
-        axis.text.x = element_blank())+
-  facet_wrap(~Profundidade, 
-             labeller = as_labeller(c("0-15" = "0-15 cm",
-                                      "15-30" = "15-30 cm",
-                                      "40-50" = "40-50 cm")))
-# K
-K_geral <- df_alongado |> 
-  filter(parametros == "K") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "K (mg/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",     
-        axis.text.x = element_blank())+
-  facet_wrap(~Profundidade, 
-             labeller = as_labeller(c("0-15" = "0-15 cm",
-                                      "15-30" = "15-30 cm",
-                                      "40-50" = "40-50 cm")))
-# Ca
-Ca_geral <- df_alongado |> 
-  filter(parametros == "Ca") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "Ca (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",
-        axis.text.x = element_blank())+
-  facet_wrap(~Profundidade, 
-             labeller = as_labeller(c("0-15" = "0-15 cm",
-                                      "15-30" = "15-30 cm",
-                                      "40-50" = "40-50 cm")))
-
-# Mg
-Mg_geral <- df_alongado |> 
-  filter(parametros == "Mg") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "Mg (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right", 
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm", 
-                                      "15-30" = "15-30 cm",  
-                                      "40-50" = "40-50 cm")))
-
-# AL_trocavel (Al3+)
-AL_trocavel_geral <- df_alongado |> 
-  filter(parametros == "AL_trocavel") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "Al3+ (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",     
-        axis.text.x = element_blank())+  
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",         
-                                      "15-30" = "15-30 cm",      
-                                      "40-50" = "40-50 cm")))
-AL_trocavel_geral
-
-# acidez_potencial (H + Al)
-acidez_potencial_geral <- df_alongado |> 
-  filter(parametros == "Acidez_potencial") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "H + Al (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",        
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm", 
-                                      "15-30" = "15-30 cm",
-                                      "40-50" = "40-50 cm")))
-
-
-# SB
-SB_geral <- df_alongado |> 
-  filter(parametros == "SB") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "SB (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",       
-        axis.text.x = element_blank())+  
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",      
-                                      "15-30" = "15-30 cm",     
-                                      "40-50" = "40-50 cm")))
-SB_geral
-
-# t (CTC efetiva)
-t_geral <- df_alongado |> 
-  filter(parametros == "t") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "t (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",     
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",   
-                                      "15-30" = "15-30 cm", 
-                                      "40-50" = "40-50 cm")))
-t_geral
-
-# T (CTC a pH 7,0)
-T_geral <- df_alongado |> 
-  filter(parametros == "T") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "T (cmolc/dm³)",
-       fill = "Talhão")+
-  theme(legend.position = "right",     
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",      
-                                      "15-30" = "15-30 cm",  
-                                      "40-50" = "40-50 cm")))
-T_geral
-
-# V (Índice de Saturacão por Bases)
-V_geral <- df_alongado |> 
-  filter(parametros == "V") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "V (%)",
-       fill = "Talhão")+
-  theme(legend.position = "right",    
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,               
-             labeller = as_labeller(c("0-15" = "0-15 cm",       
-                                      "15-30" = "15-30 cm",    
-                                      "40-50" = "40-50 cm")))
-V_geral
-
-# m (Índice de Saturação por Aluminio)
-m_geral <- df_alongado |> 
-  filter(parametros == "m") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "m (%)",
-       fill = "Talhão")+
-  theme(legend.position = "right",      
-        axis.text.x = element_blank())+ 
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",    
-                                      "15-30" = "15-30 cm", 
-                                      "40-50" = "40-50 cm")))
-m_geral
-
-# MO (Matéria Orgânica)
-MO_geral <- df_alongado |> 
-  filter(parametros == "MO") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "MO (dag/kg)",
-       fill = "Talhão")+
-  theme(legend.position = "right", 
-        axis.text.x = element_blank())+   
-  facet_wrap(~Profundidade,            
-             labeller = as_labeller(c("0-15" = "0-15 cm", 
-                                      "15-30" = "15-30 cm",  
-                                      "40-50" = "40-50 cm")))
-MO_geral
-
-# p_rem
-p_rem_geral <- df_alongado |> 
-  filter(parametros == "p_rem") |> 
-  ggplot(aes(x = talhao, y = resultados, fill = talhao))+
-  geom_boxplot()+
-  labs(x = "Talhão",
-       y = "p_rem (mg/L)",
-       fill = "Talhão")+
-  theme(legend.position = "right",  
-        axis.text.x = element_blank())+   
-  facet_wrap(~Profundidade,              
-             labeller = as_labeller(c("0-15" = "0-15 cm",   
-                                      "15-30" = "15-30 cm", 
-                                      "40-50" = "40-50 cm")))
-p_rem_geral
-```
-
-```{r}
-#| label: juntando-os-graficos
-
-## df_alongado: Arrange the plots on one page 
-ph_h2o_geral
-P_geral
-K_geral
-Ca_geral
-Mg_geral
-AL_trocavel_geral
-acidez_potencial_geral
-SB_geral
-t_geral
-T_geral
-V_geral
-m_geral
-MO_geral
-p_rem_geral
+#| label: distribuicao-dia-3
+df_3DAA_A_Davis |> 
+  ggplot(aes(x = Severidade))+
+  geom_histogram()
 ```
 
 # Estatística
 
-## Descritiva
+## Processo de encontrar um modelo
 
 ```{r}
-#| label: descritiva-medias
-#| include: false
+#| label: modelo_1
 
-# apenas as médias
-medias_descritiva <- df_alongado |> 
-  group_by(talhao, Profundidade, parametros) |> 
-  summarise(
-    media = mean(resultados)) |> 
-  pivot_wider(names_from = parametros,
-              values_from = media) |>
-  # arrange the table by the Profundidade collumn
-  arrange(Profundidade)
+model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
+
+summary(model1)
 ```
 
-```{r}
-#| label: tabela-descritiva-medias
-#| fig-cap: "Tabela 1: valores médios dos parâmetros químicos."
+Grafico dos efeitos principais:
 
-as.data.frame(medias_descritiva) |>
-  gt()
+```{r}
+#| label: gráfico-de-efeitos-principais
+# Gráfico de efeitos principais (usando ggplot2 para visualização)
+ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
+  geom_point(aes(color = Adjuvante)) +
+  geom_jitter(aes(color = Adjuvante))+
+  scale_x_continuous(breaks = c(0, 10, 30, 120))+
+  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
+  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
+       x="Taxa de Aplicação de Pesticida",
+       y="Severidade dos Danos (Escala Davis)") +
+  theme_minimal()
 ```
