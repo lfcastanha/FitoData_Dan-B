@@ -39,19 +39,6 @@ df_A_Davis <- dadosA_davis |>
          Adjuvante = factor(Adjuvante)) |> 
   rename(planta = "Sub")
 
-
-df_A_Davis |> 
-  filter(dias == "3DAA") |> 
-  ggplot(aes(x = Tratamento, y = contagem))+
-  geom_boxplot()
-
-df_A_Davis |> 
-  filter(dias == "7DAA") |> 
-  ggplot(aes(x = contagem))+
-  geom_histogram()
-
-
-
 #### ESTATÍSTICA ####
 # ANOVA
 
@@ -113,16 +100,11 @@ library(ggplot2)  # Para visualização dos dados
 
 # selecionar apenas o dia 3DAA
 df_3DAA_A_Davis <- df_A_Davis |> 
-  filter(dias == "3DAA") |> 
-  mutate(Taxa = factor(Taxa))
+  filter(dias == "3DAA") 
 
 # Ajuste do Modelo Linear Generalizado Misto
 glmm_model <- glmer(Severidade ~ Taxa*Adjuvante + (1|Bloco), 
                     family = poisson(link = "log"), data = df_A_Davis)
-
-
-model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
-summary(model1)
 
 # Resumo do modelo
 summary(glmm_model)
@@ -144,17 +126,25 @@ AIC(glmm_model, glmm_model_sem_interacao)
 anova(glmm_model)
 
 # Gráfico de efeitos principais (usando ggplot2 para visualização)
-ggplot(dados_chatGPT, aes(x=Taxa, y=Severidade, color=Adjuvante)) +
-  geom_point() +
-  geom_smooth(method="glm", method.args=list(family="poisson"), se=FALSE) +
+ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
+  geom_point(aes(color = Adjuvante)) +
+  geom_jitter(aes(color = Adjuvante))+
+  scale_x_continuous(breaks = c(0, 10, 30, 120))+
+  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
   labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
        x="Taxa de Aplicação de Pesticida",
        y="Severidade dos Danos (Escala Davis)") +
   theme_minimal()
 
-|> # Se necessário, salvar o modelo ajustado
+# Se necessário, salvar o modelo ajustado
 save(glmm_model, file = "glmm_modelo_ajustado.RData")  
          
+
+### testing out other stuff
+
+model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
+summary(model1)
 
 # Using Flexplot -----------------------------------
 
@@ -191,3 +181,46 @@ model.comparison(full, reduced)
 
 # 
 visualize(full, plot = "model", jitter = c(0, .1))
+
+
+
+
+### graficos -------------------
+
+# Gráfico de efeitos principais (usando ggplot2 para visualização)
+ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
+  geom_point(aes(color = Adjuvante)) +
+  geom_jitter(aes(color = Adjuvante))+
+  scale_x_continuous(breaks = c(0, 10, 30, 120))+
+  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
+  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
+       x="Taxa de Aplicação de Pesticida",
+       y="Severidade dos Danos (Escala Davis)") +
+  theme_minimal()
+
+# 
+df_geral_A_Davis <- df_A_Davis |> 
+  mutate(dias = as.character(dias),
+         dias = recode(dias, 
+                       "3DAA" = "3",
+                       "7DAA" = "7", 
+                       "3DAB" = "10",
+                       "7DAB" = "14"),
+         dias = as.numeric(dias))
+
+df_geral_A_Davis |> 
+  ggplot(aes(x = dias, y = Severidade, color = Taxa))+
+  geom_point() +
+  geom_jitter(width = 0.4, height = 0.2)+
+  scale_x_continuous(breaks = c(3, 7, 10, 14))+
+  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE)+
+  facet_wrap(~Adjuvante)
+  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
+       x="Taxa de Aplicação de Pesticida",
+       y="Severidade dos Danos (Escala Davis)") +
+  theme_minimal()
+
+  ?geom_jitter
+  
