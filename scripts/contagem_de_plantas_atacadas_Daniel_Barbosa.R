@@ -39,6 +39,10 @@ df_A_cont |>
   geom_point()+
   facet_wrap(~Bloco)
 
+# histograma (distribuição dos dados)
+df_A_cont |> 
+  ggplot(aes(x = contagem))+
+  geom_histogram()
 
 ######## testar!!!###########
 anova_tabela <- df_A_cont %>%

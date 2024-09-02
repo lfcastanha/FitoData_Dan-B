@@ -102,10 +102,17 @@ library(ggplot2)  # Para visualização dos dados
 df_3DAA_A_Davis <- df_A_Davis |> 
   filter(dias == "3DAA") 
 
+# rescaling the answer variable
+df_A_Davis$Taxa <- scale(df_A_Davis$Taxa)
+
+df_A_Davis |> 
+  ggplot(aes(x = Taxa))+
+  geom_density()
+
+
 # Ajuste do Modelo Linear Generalizado Misto
 glmm_model <- glmer(Severidade ~ Taxa*Adjuvante + (1|Bloco), 
                     family = poisson(link = "log"), data = df_A_Davis)
-
 # Resumo do modelo
 summary(glmm_model)
 
@@ -141,7 +148,42 @@ ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
 save(glmm_model, file = "glmm_modelo_ajustado.RData")  
          
 
-### testing out other stuff
+### Reajustandando os dados à escala original ------------
+
+# Supondo que 'TaxaAplicacao' foi padronizada
+# E que o modelo foi ajustado com a variável padronizada
+
+# Ajustando o modelo
+glm_model <- glm(Severidade ~ scale(TaxaAplicacao) * Adjuvante, 
+                 family = poisson(link = "log"), data = dados_experimento)
+
+# Resumo do modelo
+summary(glm_model)
+
+# Obter o desvio padrão da variável original 'TaxaAplicacao'
+sd_taxa <- sd(dados_experimento$TaxaAplicacao)
+
+# Extrair os coeficientes do modelo
+coef_padronizados <- coef(glm_model)
+
+# Transformar os coeficientes de volta para a escala original
+coef_originais <- coef_padronizados
+coef_originais["scale(TaxaAplicacao)"] <- coef_padronizados["scale(TaxaAplicacao)"] / sd_taxa
+coef_originais["scale(TaxaAplicacao):Adjuvante"] <- coef_padronizados["scale(TaxaAplicacao):Adjuvante"] / sd_taxa
+
+# Exibir os coeficientes transformados
+coef_originais
+
+# Opcional: criar um sumário manualmente com os coeficientes ajustados
+summary_adjusted <- summary(glm_model)
+summary_adjusted$coefficients[,1] <- coef_originais
+
+summary_adjusted
+
+
+
+
+### testing out other stuff -----------------
 
 model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
 summary(model1)
@@ -186,19 +228,6 @@ visualize(full, plot = "model", jitter = c(0, .1))
 
 
 ### graficos -------------------
-
-# Gráfico de efeitos principais (usando ggplot2 para visualização)
-ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
-  geom_point(aes(color = Adjuvante)) +
-  geom_jitter(aes(color = Adjuvante))+
-  scale_x_continuous(breaks = c(0, 10, 30, 120))+
-  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
-  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
-  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
-       x="Taxa de Aplicação de Pesticida",
-       y="Severidade dos Danos (Escala Davis)") +
-  theme_minimal()
-
 # 
 df_geral_A_Davis <- df_A_Davis |> 
   mutate(dias = as.character(dias),
@@ -209,14 +238,20 @@ df_geral_A_Davis <- df_A_Davis |>
                        "7DAB" = "14"),
          dias = as.numeric(dias))
 
+# histograma (distribuição dos dados)
 df_geral_A_Davis |> 
-  ggplot(aes(x = dias, y = Severidade, color = Taxa))+
+  ggplot(aes(x = Severidade))+
+  geom_histogram()
+
+# visãp geral dos dados com todos os dias
+df_geral_A_Davis |> 
+  ggplot(aes(x = dias, y = Severidade, color = Adjuvante))+
   geom_point() +
   geom_jitter(width = 0.4, height = 0.2)+
   scale_x_continuous(breaks = c(3, 7, 10, 14))+
   scale_y_continuous(breaks = c(0,2,4,6,8,10))+
   geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE)+
-  facet_wrap(~Adjuvante)
+  facet_wrap(~Taxa)
   labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
        x="Taxa de Aplicação de Pesticida",
        y="Severidade dos Danos (Escala Davis)") +

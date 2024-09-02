@@ -4,9 +4,9 @@ execute:
   warning: false
 title: "Relatorio Parcial 1"
 subtitle: "Daniel Barbosa"
-author: "Lucas Castanheira - FitoData"
+author: "Lucas Castanheira e José Guilherme - FitoData"
 date: '`r format(Sys.time(), "%d %B, %Y")`'
-description: "Criando modelos que expliquem os dados"
+description: "Criando modelos para os dados"
 title-block-banner: true
 format:
  html: 
@@ -82,9 +82,11 @@ Para analisar esse tipo de dados, é preciso utilizar de uma função de modelos
 
 ```{r}
 #| label: distribuicao-dia-3
-df_3DAA_A_Davis |> 
+#| caption: "Distribuição das observações do nível de severidade pela Escala Davis."
+df_A_Davis |> 
   ggplot(aes(x = Severidade))+
-  geom_histogram()
+  geom_histogram()+
+  labs(x = "Severidade (Escala Davis)")
 ```
 
 # Estatística
