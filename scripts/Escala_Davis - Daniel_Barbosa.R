@@ -133,7 +133,7 @@ AIC(glmm_model, glmm_model_sem_interacao)
 anova(glmm_model)
 
 # Gráfico de efeitos principais (usando ggplot2 para visualização)
-ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
+ggplot(df_A_Davis, aes(x= Taxa, y=Severidade)) +
   geom_point(aes(color = Adjuvante)) +
   geom_jitter(aes(color = Adjuvante))+
   scale_x_continuous(breaks = c(0, 10, 30, 120))+
@@ -147,7 +147,7 @@ ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
 # Se necessário, salvar o modelo ajustado
 save(glmm_model, file = "glmm_modelo_ajustado.RData")  
          
-
+??anova
 ### Reajustandando os dados à escala original ------------
 
 # Supondo que 'TaxaAplicacao' foi padronizada
@@ -223,9 +223,8 @@ model.comparison(full, reduced)
 
 # 
 visualize(full, plot = "model", jitter = c(0, .1))
-
-
-
+visualize(reduced, plot = "model", jitter = c(.2, .2))
+?visualize
 
 ### graficos -------------------
 # 

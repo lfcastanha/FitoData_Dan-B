@@ -65,20 +65,19 @@ df_A_Davis <- dadosA_davis |>
                values_to = "Severidade",
                cols = "3DAA":"7DAB") |> 
   mutate(dias = factor(dias),
-         Adjuvante = factor(Adjuvante)) |> 
+         Adjuvante = factor(Adjuvante),
+         # transformar taxa em fator
+         Taxa = factor(Taxa)) |> 
   rename(planta = "Sub")
 
 # selecionar apenas o dia 3DAA
 df_3DAA_A_Davis <- df_A_Davis |> 
-  filter(dias == "3DAA") |> 
-  mutate(Taxa = as.numeric(Taxa))
+  filter(dias == "3DAA")
 ```
 
 # Introdução
 
-Os dados coletados da severidade (Escala Davis) e da contagem de plantas atacaas não seguem uma distribuição normal, e sim a distribuição de Poisson, em que os valores da variável resposta são números inteiros maiores ou iguais a zero. Nesse tipo de distribuição, números zeros são muito frequentes e, portanto, tendenciam a curva de distribuição para a esquerda.
-
-Para analisar esse tipo de dados, é preciso utilizar de uma função de modelos lineares generalizados para encontrar um modelo que melhor se adapte aos resultados, para assim, conseguirmos extrair informações sobre seu comportamento e comparar a interação existente entre as variáveis presentes.
+Os dados coletados da severidade (Escala Davis) e da contagem de plantas atacadas não seguem uma distribuição normal - conforme visto no gráfico abaixo. A melhor distribuição que se aplica ao dados é a distribuição de Poisson, que segue o seguinte modelo não linear log μ = β0+β1x .
 
 ```{r}
 #| label: distribuicao-dia-3
@@ -89,6 +88,14 @@ df_A_Davis |>
   labs(x = "Severidade (Escala Davis)")
 ```
 
+Para ajustar essa curva, criamos modelos lineares generalizados a fim de encontrar o modelo que melhor se adapte aos resultados, levando em consideração critérios com como residual deviance e o AIC.
+
+Muitas das vezes a curva de distribuição de poisson é teórica, pois parte do pressuposto de que a média e a variância são idênticas. Caso isso não ocorra em seus dados, que é o mais provável, então usaremos uma curva de semi poisson. Que pode revelar pouca significância entre as variáveis preditoras do seu modelo, tanto entre os níveis quanto entre a interação.
+
+Estamos em fase de leitura e processamento para achar o melhor modelo que se ajuste aos seus dados.
+
+Abaixo montamos um exemplo de como temos feito esse processo.
+
 # Estatística
 
 ## Processo de encontrar um modelo
@@ -96,9 +103,38 @@ df_A_Davis |>
 ```{r}
 #| label: modelo_1
 
-model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_3DAA_A_Davis)
+model_null <- glm(Severidade ~ 1, family = "poisson", df_A_Davis)
+model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_A_Davis)
 
-summary(model1)
+anova(model_null, model1, test = "Chisq")
+```
+
+Após montar um modelo com incluindo as variáveis Taxa, Adjuvante e Bloco, percebemos que o desvio do modelo 1 é menor que o do modelo nulo, indicando que precisamos de um modelo mais complexo que o nulo.
+
+Agora comparamos a interação entre os tratamentos inclusos dentro do modelo 1. Fazemos isso para verificar a possibilidade de reduzir o modelo e deixá-lo mais simplificado.
+
+```{r}
+model2 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "quasipoisson", df_A_Davis)
+
+anova(model2, test = "F")
+```
+
+Por meio desse resultado, vemos que todos os tratamentos apresentam diferença significativa. Para propor um modelo menos simplificado, então, excluiremos o tratamento com menor significância de interação.
+
+```{r}
+model3 <- glm(Severidade~Adjuvante*Bloco, family = "poisson", df_A_Davis)
+
+anova(model2, model3, test = "F")
+```
+
+```{r}
+model4 <- glm(Severidade~Adjuvante+Bloco+Taxa, family = "quasipoisson", df_A_Davis)
+
+anova(model2, model4, test = "F")
+```
+
+```{r}
+anova(model4, test = "F")
 ```
 
 Grafico dos efeitos principais:
