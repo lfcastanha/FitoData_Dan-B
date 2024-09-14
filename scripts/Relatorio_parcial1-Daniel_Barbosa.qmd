@@ -33,6 +33,11 @@ library(ggthemes)
 library(knitr)
 library(ggpubr)
 library(gt)
+library(lmtest)
+library(DHARMa)
+#
+library(lme4)
+library(MuMIn) # Para facilitar a comparação de modelos
 
 dadosA_davis <- read_excel("../dados/Escala Davis/adavis-adapted.xlsx")
 
@@ -65,14 +70,15 @@ df_A_Davis <- dadosA_davis |>
                values_to = "Severidade",
                cols = "3DAA":"7DAB") |> 
   mutate(dias = factor(dias),
-         Adjuvante = factor(Adjuvante),
-         # transformar taxa em fator
-         Taxa = factor(Taxa)) |> 
-  rename(planta = "Sub")
+         Adjuvante = factor(Adjuvante)) |> 
+  rename(planta = "Sub") |> 
+  #retirar valores NA
+  drop_na()
 
 # selecionar apenas o dia 3DAA
 df_3DAA_A_Davis <- df_A_Davis |> 
-  filter(dias == "3DAA")
+  filter(dias == "3DAA") |> 
+  mutate(Taxa = as.numeric(Taxa))
 ```
 
 # Introdução
@@ -81,16 +87,15 @@ Os dados coletados da severidade (Escala Davis) e da contagem de plantas atacada
 
 ```{r}
 #| label: distribuicao-dia-3
-#| caption: "Distribuição das observações do nível de severidade pela Escala Davis."
-df_A_Davis |> 
+#| fig-cap: "Figura 1: Distribuição das observações do nível de severidade pela Escala Davis."
+df_3DAA_A_Davis |> 
   ggplot(aes(x = Severidade))+
   geom_histogram()+
+  scale_x_continuous(breaks = c(0:9))+
   labs(x = "Severidade (Escala Davis)")
 ```
 
-Para ajustar essa curva, criamos modelos lineares generalizados a fim de encontrar o modelo que melhor se adapte aos resultados, levando em consideração critérios com como residual deviance e o AIC.
-
-Muitas das vezes a curva de distribuição de poisson é teórica, pois parte do pressuposto de que a média e a variância são idênticas. Caso isso não ocorra em seus dados, que é o mais provável, então usaremos uma curva de semi poisson. Que pode revelar pouca significância entre as variáveis preditoras do seu modelo, tanto entre os níveis quanto entre a interação.
+Para ajustar essa curva, criamos modelos lineares generalizados a fim de encontrar o modelo que melhor se adapte aos resultados, levando em consideração critérios como residual deviance e o AIC.
 
 Estamos em fase de leitura e processamento para achar o melhor modelo que se ajuste aos seus dados.
 
@@ -98,58 +103,122 @@ Abaixo montamos um exemplo de como temos feito esse processo.
 
 # Estatística
 
-## Processo de encontrar um modelo
+A fim de encontrar o modelo ideal, criamos modelos com diferentes níveis de complexidade para compará-los e verificar se há diferença entre eles. No fim das contas, queremos ficar com o modelo mais simples, desde que ele explique os dados da mesma forma que os mais complexos.
+
+Para isso, seguimos os seguintes passos:
+
+## 1) Elaborar modelos com diferentes níveis de complexidade
+
+Estamos utilizando os dados de severidade medido pela Escala Davis. Pare esse exemplo, utilizamos apenas as observações feitas no dia "3DAA".
+
+-   Modelo:
+
+    -   Completo (Severidade \~ taxa_aplicacao_esc \* Adjuvante + (1 \| Bloco);
+
+    -   Sem interação (Severidade \~ taxa_aplicacao_esc + Adjuvante + (1 \| Bloco);
+
+    -   Apenas a Taxa (Severidade \~ taxa_aplicacao_esc + (1 \| Bloco);
+
+    -   Apenas o Ajuvante (Severidade \~ Adjuvante + (1 \| Bloco);
 
 ```{r}
-#| label: modelo_1
+#| label: reescalonando-variavel-taxa
+# Supondo que seu banco de dados esteja no data frame `dados`
+# Variável resposta: `severidade` (medida pela escala Davis)
+# Variáveis preditoras: `taxa_aplicacao` (taxa de aplicação de pesticida) e `adjuvante` (tipo de adjuvante)
+# Variável aleatória: `bloco` (blocos casualizados)
 
-model_null <- glm(Severidade ~ 1, family = "poisson", df_A_Davis)
-model1 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "poisson", df_A_Davis)
 
-anova(model_null, model1, test = "Chisq")
-```
-
-Após montar um modelo com incluindo as variáveis Taxa, Adjuvante e Bloco, percebemos que o desvio do modelo 1 é menor que o do modelo nulo, indicando que precisamos de um modelo mais complexo que o nulo.
-
-Agora comparamos a interação entre os tratamentos inclusos dentro do modelo 1. Fazemos isso para verificar a possibilidade de reduzir o modelo e deixá-lo mais simplificado.
-
-```{r}
-model2 <- glm(Severidade ~ Taxa*Adjuvante*Bloco, family = "quasipoisson", df_A_Davis)
-
-anova(model2, test = "F")
-```
-
-Por meio desse resultado, vemos que todos os tratamentos apresentam diferença significativa. Para propor um modelo menos simplificado, então, excluiremos o tratamento com menor significância de interação.
-
-```{r}
-model3 <- glm(Severidade~Adjuvante*Bloco, family = "poisson", df_A_Davis)
-
-anova(model2, model3, test = "F")
-```
-
-```{r}
-model4 <- glm(Severidade~Adjuvante+Bloco+Taxa, family = "quasipoisson", df_A_Davis)
-
-anova(model2, model4, test = "F")
+# Reescalonamento da variável 'taxa_aplicacao'
+df_3DAA_A_Davis$Taxa <- as.numeric(df_3DAA_A_Davis$Taxa)
+taxa_media <- mean(df_3DAA_A_Davis$Taxa)
+taxa_sd <- sd(df_3DAA_A_Davis$Taxa)
+df_3DAA_A_Davis$taxa_aplicacao_esc <- as.factor((df_3DAA_A_Davis$Taxa - taxa_media) / taxa_sd )
 ```
 
 ```{r}
-anova(model4, test = "F")
+#| label: montando-modelos
+#| include: false
+# Modelo completo: Inclui todas as variáveis e a interação entre elas
+modelo_completo <- glmer(Severidade ~ taxa_aplicacao_esc * Adjuvante + (1 | Bloco), 
+                         data = df_3DAA_A_Davis, family = poisson(link = "log"))
+
+# Modelos simplificados
+modelo_sem_interacao <- glmer(Severidade ~ taxa_aplicacao_esc + Adjuvante + (1 | Bloco), 
+                              data = df_3DAA_A_Davis, family = poisson(link = "log"))
+
+modelo_apenas_taxa <- glmer(Severidade ~ taxa_aplicacao_esc + (1 | Bloco), 
+                            data = df_3DAA_A_Davis, family = poisson(link = "log"))
+
+modelo_apenas_adjuvante <- glmer(Severidade ~ Adjuvante + (1 | Bloco), 
+                                 data = df_3DAA_A_Davis, family = poisson(link = "log"))
+
 ```
 
-Grafico dos efeitos principais:
+## 2) Comparação entre modelos
+
+Utilizamos o Critério de Informação de Akaike (AIC) para comparar os modelos criados.
+
+Quanto menor o AIC, melhor é o modelo.
+
+```{r}
+#| label: comparando-modelos
+# Comparação dos modelos usando o critério de Akaike (AIC)
+aic_modelos <- data.frame(
+  Modelo = c("Completo", "Sem Interação", "Apenas Taxa", "Apenas Adjuvante"),
+  AICc = c(AICc(modelo_completo), 
+           AICc(modelo_sem_interacao), 
+           AICc(modelo_apenas_taxa), 
+           AICc(modelo_apenas_adjuvante))
+)
+
+# Ordena os modelos pelo AICc
+aic_modelos <- aic_modelos[order(aic_modelos$AICc), ]
+
+# Exibe os resultados da comparação dos modelos
+print(aic_modelos)
+```
+
+## 3) Tomada de decisão
+
+Pelo resultado acima, vemos que o modelo completo é o que melhor representa os dados. Por isso, seguimos com ele.
+
+Abaixo temos as informações gerais abstraídas dele, das quais tiraremos nossas conclusões.
+
+```{r}
+#| label: escolha-do-melhor-modelo
+# Seleciona o modelo com o menor AIC
+melhor_modelo <- switch(aic_modelos$Modelo[1],
+                        "Completo" = modelo_completo,
+                        "Sem Interação" = modelo_sem_interacao,
+                        "Apenas Taxa" = modelo_apenas_taxa,
+                        "Apenas Adjuvante" = modelo_apenas_adjuvante)
+
+# Resumo do melhor modelo
+summary(melhor_modelo)
+```
+
+## 4) Grafico dos efeitos principais:
+
+Abaixo temos um gráfico representando o compartamento geral da Severidade em função da taxa e adjuvante.
 
 ```{r}
 #| label: gráfico-de-efeitos-principais
 # Gráfico de efeitos principais (usando ggplot2 para visualização)
-ggplot(df_3DAA_A_Davis, aes(x= Taxa, y=Severidade)) +
-  geom_point(aes(color = Adjuvante)) +
-  geom_jitter(aes(color = Adjuvante))+
-  scale_x_continuous(breaks = c(0, 10, 30, 120))+
-  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
-  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
-  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
-       x="Taxa de Aplicação de Pesticida",
-       y="Severidade dos Danos (Escala Davis)") +
-  theme_minimal()
+df_3DAA_A_Davis |> 
+  ggplot(aes(x= Taxa, y =Severidade, color = Adjuvante)) +
+    geom_point() +
+    geom_jitter()+
+    scale_x_continuous(breaks = c(0, 10, 30, 120))+
+    scale_y_continuous(breaks = 0:9)+
+    geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE) +
+    labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade",
+         subtitle = "Observação feita 3 dias após a primeira aplicação",
+         x="Taxa de Aplicação de Pesticida",
+         y="Severidade dos Danos (Escala Davis)") +
+    theme_minimal()
 ```
+
+Com base nesses resultados, conseguimos fazer as interpretações necessárias.
+
+No momento, estamos comparando esse método com outros de transformação da variável resposta para avaliar qual melhor explica os dados.

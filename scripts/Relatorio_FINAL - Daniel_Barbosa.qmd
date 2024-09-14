@@ -1,0 +1,1568 @@
+---
+execute: 
+  echo: false
+  warning: false
+title: "Relatorio Final"
+subtitle: "Daniel Barbosa"
+author: "Lucas Castanheira e José Guilherme - FitoData"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+description: "Análise Estatística"
+title-block-banner: true
+format:
+ html: 
+    embed-resources: true
+    smooth-scroll: true
+    theme: cosmo
+    fontcolor: black
+    toc: true
+    toc-location: left
+    toc-title: Summary
+    toc-depth: 3
+fontsize: 12pt
+editor: visual
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# rm(list = ls())
+
+# library
+library(tidyverse) #sintaxe geral do código
+library(readxl) # importação dos dados
+library(easyanova)  # estatística
+library(RColorBrewer) # modificar as cores
+library(nortest) # lilliefors test
+library(gt)   # tabelas bonitas
+library(DescTools) # teste de Dunnettlibrary(tidyverse)
+
+# Incidência - Dados
+df_incidencia_A <- read_excel("../dados/Contagem de Pantas Atacadas/df_incidencia_A") |> 
+  mutate_if(is.character, as.factor) |> 
+  mutate(Dias = fct_relevel(Dias, "0DAA", "3DAA", "7DAA", "3DAB", "7DAB"),
+         Taxa = fct_relevel(Taxa, "NA", "10", "30", "120"),
+         Adjuvante = fct_relevel(Adjuvante, "Aureo", "Silwet", "Ochima", "NA")
+         )
+  
+# Severidade - Dados
+df_A_Davis <- read_excel("../dados/Escala Davis/df_A_Davis.xlsx")|>
+  mutate_if(is.character, as.factor) |> 
+  mutate(Taxa = as.factor(Taxa),
+         dias = fct_relevel(dias, "3DAA", "7DAA", "3DAB", "7DAB"),
+         Adjuvante = fct_relevel(Adjuvante, "Aureo", "Silwet", "Ochima", "NA"),
+         Taxa = fct_relevel(Taxa, "0", "10", "30", "120"))
+# Produtividade - Dados
+df_produtividade <- read.table("../dados/Produtividade/aprod_ADAPT_1.txt" , h= TRUE) |> 
+  mutate(Adjuvante = as.factor(Adjuvante),
+         Taxa = as.factor(Taxa), 
+         Bloco = as.factor(Bloco))
+
+```
+
+# 1. Contagem de Plantas Atacadas (Incidência)
+
+Para avaliar a incidência de plantas com danos no cartucho do milho, consideramos a porcentagem de plantas atacadas (número de plantas atacadas dividido por 25).
+
+```{r}
+#| label: Incidência-transformação-dados
+
+## Retirando o controle para não afetar no desenho fatorial 3x4+1
+inc_sem_c <- df_incidencia_A |> 
+  filter(!(Tratamento == 1)) |> 
+  select(!Tratamento)
+```
+
+## 1.1. Visualização dos dados
+
+Na figura abaixo está representada o efeito das taxas de aplicação e adjuvantes sobre a incidência ao longo do tempo.
+
+```{r}
+#| label: Incidencia-gráfico-ao-longo-do-tempo
+
+### Gráfico para verificar a INCIDÊNCIA ao longo dos dias -------------------
+## Transformando o tempo em contínuo
+df_geral_inc_A <- df_incidencia_A |> 
+  mutate(Dias = as.character(Dias),
+         Dias = recode(Dias, 
+                       "0DAA" = "0",
+                       "3DAA" = "3",
+                       "7DAA" = "7", 
+                       "3DAB" = "10",
+                       "7DAB" = "14"),
+         Dias = as.numeric(Dias))
+
+# visão geral dos dados com todos os dias
+df_geral_inc_A |> 
+  ggplot(aes(x = Dias, y = Incidencia_percent, color = Adjuvante))+
+  geom_point() +
+  geom_jitter(width = 0.4, height = 0.2)+
+  scale_x_continuous(breaks = c(0, 3, 7, 10, 14))+
+  # scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE)+
+  facet_wrap(~Taxa)+
+  labs(title = "Efeito da Taxa de Aplicação e Adjuvante na Incidência ao longo do tempo",
+       x="Tempo",
+       y="Incidência (%)") 
+```
+
+```{r}
+#| label: Incidência-boxplots-adj-taxa
+#| include: false
+
+### SERÁ QUE ADICIONO ESSE AO RELATÓRIO??? ###
+
+## Boxplot do adjuvante e taxa
+df_incidencia_A |> 
+  ggplot(aes(x = Adjuvante, y = Incidencia_percent, fill = Taxa))+
+  geom_boxplot(position = position_dodge(width = 0.8))+
+  geom_point(position = position_dodge(width = 0.8))
+```
+
+```{r}
+#| label: Incidência-boxplots-tratamentos
+#| 
+### Gráficos para visualização dos dados: INCIDÊNCIA ----------------
+
+## Boxplot dos tratamentos
+# geral
+BP_g_INC_trat <- df_incidencia_A |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "Todos os dias",
+    x = "Tratamentos",
+    y = "Incidência (%)")+
+  facet_wrap(~Dias)
+# BP_g_INC_trat
+
+# 0DAA
+BP_d0A_INC_trat <- df_incidencia_A |> 
+  filter(Dias == "0DAA") |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "0DAA",
+    x = "Tratamentos",
+    y = "Incidência (%)")
+# BP_d0A_INC_trat
+
+# 3DAA
+BP_d3A_INC_trat <- df_incidencia_A |> 
+  filter(Dias == "3DAA") |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "3DAA",
+    x = "Tratamentos",
+    y = "Incidência (%)")
+# BP_d3A_INC_trat
+
+# 7DAA
+BP_d7A_INC_trat <- df_incidencia_A |> 
+  filter(Dias == "7DAA") |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "7DAA",
+    x = "Tratamentos",
+    y = "Incidência (%)")
+# BP_d7A_INC_trat
+
+# 3DAB
+BP_d3B_INC_trat <- df_incidencia_A |> 
+  filter(Dias == "3DAB") |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "3DAB",
+    x = "Tratamentos",
+    y = "Incidência (%)")
+# BP_d3B_INC_trat
+
+# 7DAB
+BP_d7B_INC_trat <- df_incidencia_A |> 
+  filter(Dias == "7DAB") |> 
+  ggplot(aes(x = reorder(Tratamento, -Incidencia_percent), y = Incidencia_percent, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "7DAB",
+    x = "Tratamentos",
+    y = "Incidência (%)")
+# BP_d7B_INC_trat
+```
+
+## 1.2. Análise Descritiva
+
+```{r}
+#| label: Incidência-tabela-descritiva
+## Transformando os dados
+tab_descritiva_INC <- df_incidencia_A |> 
+  group_by(Tratamento, Adjuvante, Taxa )%>% 
+  summarise(Mean = mean(Incidencia_percent), SD = sd(Incidencia_percent)) %>% 
+  arrange(Taxa)
+
+## Tabela descritiva
+as.data.frame(tab_descritiva_INC[]) |> 
+  gt() %>%
+  cols_label(
+    Tratamento = md("**Tratamento**"),
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    Mean = md("**Média**"),
+    SD = md("**Desvio**")) %>%
+  tab_header(title = md("***Produtividade***")) %>%
+  tab_options(
+    table.width = pct(95)  # Define a largura da tabela como 100% da área disponível
+  )
+```
+
+## 1.3. Análise Inferencial
+
+Para a análise comparativa, os dados foram divididos em dias para que os efeitos dos fatores sejam visualizados dentro de cada avaliação de campo.
+
+Como o delineamento experimental foi conduzido em esquma fatorial 4x3+1, foi preciso avaliar os fatores SEM a testemunha a priori e, em seguida, comparar os tratamentos com a testemunha.
+
+### a. D0AA
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Incidência-Pressupostos-0DAA-SC
+### Anova SEM testemunha
+Inc_d0A_sem_c_anova <- inc_sem_c |> 
+  filter(Dias == "0DAA") |>
+  select(Adjuvante, Taxa, Bloco, Incidencia_percent) |> 
+  easyanova::ea2(design = 2, plot = 2)
+# Inc_d0A_sem_c_anova
+
+## Resultados:
+Inc_d0A_sem_c_anova[[10]]$`residual analysis`
+# Normalidade do resíduo: p> 0.05
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-0DAA-SC
+
+# Inc_d0A_sem_c_anova[[1]]
+## Tabela bonita da anova 
+data.1_0A <- as.data.frame(Inc_d0A_sem_c_anova[[1]])
+tratamento_0A.inc <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data.1_0A<- cbind( Tratamento  = tratamento_0A.inc, data.1_0A)
+data.2_0A <- data.1_0A |> 
+  gt() |> 
+  tab_header(
+  title = md("***Anova da Incidência***"), 
+  subtitle = md("**Antes da primeira aplicação (0DAA)**")) |> 
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) |> 
+  tab_options(table.width = pct(100)) 
+data.2_0A
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Incidência-Pressupostos-0DAA-CC
+
+# comparando os tratamentos entre si
+Inc_d0A_COM_c_anova <- df_incidencia_A |> 
+  filter(Dias == "0DAA") |> 
+  select(Tratamento, Bloco, Incidencia_percent) |> 
+  easyanova::ea1(design = 2, plot = 2)
+# Inc_d0A_COM_c_anova
+## Resultados:
+Inc_d0A_COM_c_anova[[4]]$`residual analysis`
+
+lillie.test(Inc_d0A_COM_c_anova$`Residual analysis`$residuals)
+# Normalidade do resíduo: p> 0.05 (LILLIEFORS)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-0DAA-CC
+
+### Anova COM testemunha
+
+Inc_d0A_COM_c_anova[[1]]
+
+# Os tratamentos não diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a incidência em cada tratamento no dia zero (0).
+
+```{r}
+#| label: Incidência-BOXPLOT-0DAA-CC
+
+BP_d0A_INC_trat
+```
+
+### b. D3AA
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Incidência-Pressupostos-3DAA-SC
+### Anova SEM testemunha
+Inc_d3A_sem_c_anova <- inc_sem_c |> 
+  filter(Dias == "3DAA") |>
+  select(Adjuvante, Taxa, Bloco, Incidencia_percent) |> 
+  easyanova::ea2(design = 2, plot = 2)
+# Inc_d3A_sem_c_anova
+
+## Resultados:
+Inc_d3A_sem_c_anova[[10]]$`residual analysis`
+
+lillie.test(Inc_d3A_sem_c_anova$`Residual analysis`$residuals)
+# Normalidade do resíduo: p> 0.05 (LILLIEFORS)
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são "quase" normalmente distribuídos (p = 0.041), mas pelo teste de Lilliefors, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-3DAA-SC
+
+# Inc_d3A_sem_c_anova[[1]]
+## Tabela bonita da anova 
+## Tabela bonita da anova 
+
+data.1_3A <- as.data.frame(Inc_d3A_sem_c_anova[[1]])
+tratamento_3A.inc <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data.1_3A<- cbind( Tratamento  = tratamento_3A.inc, data.1_3A)
+data.2_3A <- data.1_3A |> 
+  gt() |> 
+  tab_header(
+    title = md("***Anova da Incidência***"), 
+    subtitle = md("**Três dias após a primeira aplicação (3DAA)**")) |> 
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) |> 
+  tab_options(table.width = pct(100)) 
+data.2_3A
+
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+
+
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Incidência-Pressupostos-3DAA-CC
+# comparando os tratamentos entre si
+Inc_d3A_COM_c_anova <- df_incidencia_A |> 
+  filter(Dias == "3DAA") |> 
+  select(Tratamento, Bloco, Incidencia_percent) |> 
+  easyanova::ea1(design = 2, plot = 2)
+# Inc_d3A_COM_c_anova
+
+## Resultados:
+Inc_d3A_COM_c_anova[[4]]$`residual analysis`
+lillie.test(Inc_d3A_COM_c_anova$`Residual analysis`$residuals)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p = 0.0324), mas pelo teste de Lilliefors, os resíduos são normalmente distribuídos (p \> 0.05)
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-3DAA-CC
+
+### Anova COM testemunha
+
+Inc_d3A_COM_c_anova[[1]]
+
+# Os tratamentos não diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a incidência em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Incidência-BP-3DAA-CC
+BP_d3A_INC_trat
+```
+
+### c. D7AA
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Incidência-Pressup-7DAA-SC
+### Anova SEM testemunha
+Inc_d7A_sem_c_anova <- inc_sem_c |> 
+  filter(Dias == "7DAA") |>
+  select(Adjuvante, Taxa, Bloco, Incidencia_percent) |> 
+  easyanova::ea2(design = 2, plot = 2)
+# Inc_d7A_sem_c_anova
+
+## Resultados:
+Inc_d7A_sem_c_anova[[10]]$`residual analysis`
+
+lillie.test(Inc_d7A_sem_c_anova$`Residual analysis`$residuals)
+# Normalidade do resíduo: p = 0.32 (LILLIEFORS) - consider-se normal!
+# homocedasticidade da variância: p>0.05
+
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p = 0.0077).
+
+-   Pelo teste de Lilliefors, os resíduos são "QUASE" normalmente distribuídos (p = 0.0324). Neste caso, considera-se normal.
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-7DAA-SC
+
+
+# Inc_d7A_sem_c_anova[[1]]
+## Tabela bonita da anova 
+## Tabela bonita da anova 
+
+data.1_7A <- as.data.frame(Inc_d7A_sem_c_anova[[1]])
+tratamento_7A.inc <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data.1_7A<- cbind( Tratamento  = tratamento_7A.inc, data.1_7A)
+data.2_7A <- data.1_7A |> 
+  gt() |> 
+  tab_header(
+    title = md("***Anova da Incidência***"), 
+    subtitle = md("**Sete dias após a primeira aplicação (7DAA)**")) |> 
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) |> 
+  tab_options(table.width = pct(100)) 
+data.2_7A
+
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+
+
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Incidência-Pressup-7DAA-CC
+
+# comparando os tratamentos entre si
+Inc_d7A_COM_c_anova <- df_incidencia_A |> 
+  filter(Dias == "7DAA") |> 
+  select(Tratamento, Bloco, Incidencia_percent) |> 
+  easyanova::ea1(design = 2, plot = 2)
+# Inc_d7A_COM_c_anova
+## Resultados:
+Inc_d7A_COM_c_anova[[4]]$`residual analysis`
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p \> 0.05);
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-7DAA-CC
+
+### Anova COM testemunha
+
+Inc_d7A_COM_c_anova[[1]]
+
+# Os tratamentos não diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a incidência em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Incidência-BP-7DAA-CC
+BP_d7A_INC_trat
+```
+
+### d. D3AB
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Incidência-Pressup-3DAB-SC
+### Anova SEM testemunha
+Inc_d3B_sem_c_anova <- inc_sem_c |> 
+  filter(Dias == "3DAB") |>
+  select(Adjuvante, Taxa, Bloco, Incidencia_percent) |> 
+  easyanova::ea2(design = 2, plot = 2)
+# Inc_d3B_sem_c_anova
+
+## Resultados:
+Inc_d3B_sem_c_anova[[10]]$`residual analysis`
+
+lillie.test(Inc_d3B_sem_c_anova$`Residual analysis`$residuals)
+# Normalidade do resíduo: p = 0.32 (LILLIEFORS) - consider-se normal!
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias do fator 2 (Taxa) e dos tratamentos são iguais (p\>0.05), enquanto que no fator 1 (Adjuvante), não (p = 0.0213).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-3DAB-SC
+
+# Inc_d3B_sem_c_anova[[1]]
+## Tabela bonita da anova 
+## Tabela bonita da anova 
+
+data.1_3B <- as.data.frame(Inc_d3B_sem_c_anova[[1]])
+tratamento_3B.inc <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data.1_3B<- cbind( Tratamento  = tratamento_3B.inc, data.1_3B)
+data.2_3B <- data.1_3B |> 
+  gt() |> 
+  tab_header(
+    title = md("***Anova da Incidência***"), 
+    subtitle = md("**Três dias após a segunda aplicação (3DAB)**")) |> 
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) |> 
+  tab_options(table.width = pct(100)) 
+data.2_3B
+
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Incidência-Pressup-3DAB-CC
+
+# comparando os tratamentos entre si
+Inc_d3B_COM_c_anova <- df_incidencia_A |> 
+  filter(Dias == "3DAB") |> 
+  select(Tratamento, Bloco, Incidencia_percent) |> 
+  easyanova::ea1(design = 2, plot = 2)
+# Inc_d3B_COM_c_anova
+
+## Resultados:
+Inc_d3B_COM_c_anova[[4]]$`residual analysis`
+
+lillie.test(Inc_d3B_COM_c_anova$`Residual analysis`$residuals)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p \> 0.05);
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são "quase" iguais (p = 0.040).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-3DAB-CC
+
+### Anova COM testemunha
+
+Inc_d3B_COM_c_anova[[1]]
+
+# Os tratamentos diferem SIM estatisticamente entre si!
+
+```
+
+Pela análise de variância a 5% de significância:
+
+-   Há SIM diferença significativa entre os tratamentos (p \< 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a incidência em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Incidência-BP-3DAB-CC
+BP_d3B_INC_trat
+```
+
+### e. D7AB
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Incidência-Pressup-7DAB-SC
+
+### Anova SEM testemunha
+Inc_d7B_sem_c_anova <- inc_sem_c |> 
+  filter(Dias == "7DAB") |>
+  select(Adjuvante, Taxa, Bloco, Incidencia_percent) |> 
+  easyanova::ea2(design = 2, plot = 2)
+# Inc_d7B_sem_c_anova
+
+## Resultados:
+Inc_d7B_sem_c_anova[[10]]$`residual analysis`
+
+lillie.test(Inc_d7B_sem_c_anova$`Residual analysis`$residuals)
+# Normalidade do resíduo: p = 0.32 (LILLIEFORS) - consider-se normal!
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores e dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-7DAB-SC
+
+# Inc_d7B_sem_c_anova[[1]]
+## Tabela bonita da anova 
+## Tabela bonita da anova 
+
+data.1_7B <- as.data.frame(Inc_d7B_sem_c_anova[[1]])
+tratamento_7B.inc <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data.1_7B<- cbind( Tratamento  = tratamento_7B.inc, data.1_7B)
+data.2_7B <- data.1_7B |> 
+  gt() |> 
+  tab_header(
+    title = md("***Anova da Incidência***"), 
+    subtitle = md("**Sete dias após a segunda aplicação (7DAB)**")) |> 
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) |> 
+  tab_options(table.width = pct(100)) 
+data.2_7B
+
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Incidência-Pressup-7DAB-CC
+# comparando os tratamentos entre si
+Inc_d7B_COM_c_anova <- df_incidencia_A |> 
+  filter(Dias == "7DAB") |> 
+  select(Tratamento, Bloco, Incidencia_percent) |> 
+  easyanova::ea1(design = 2, plot = 2)
+# Inc_d7B_COM__anova
+
+## Resultados:
+Inc_d7B_COM_c_anova[[4]]$`residual analysis`
+
+lillie.test(Inc_d7B_COM_c_anova$`Residual analysis`$residuals)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p \> 0.05);
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos iguais (p \> 0.05)).
+
+##### ANOVA
+
+```{r}
+#| label: Incidência-ANOVA-7DAB-CC
+
+### Anova COM testemunha
+
+Inc_d7B_COM_c_anova[[1]]
+
+# Os tratamentos NÃO diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a incidência em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Incidência-BP-7DAB-CC
+
+BP_d7B_INC_trat
+```
+
+# 2. Severidade (Escala Davis)
+
+Para avaliar a Severidade, medida segundo os parâmetros da Escala Davis, consideramos as [médias]{.underline} dos valores aferidos nas 25 plantas dentro de cada Bloco.
+
+Dessa forma, obtivemos quatro valores de severidade por tratamento.
+
+```{r}
+#| label: Severidade-Transformando-dados
+
+#### Transformando os dados ----------------------------
+## Reduzindo a severidade das 25 plantas para uma média por bloco
+df_media_A_Davis <- df_A_Davis |> 
+  group_by(Adjuvante, Taxa, Bloco, Tratamento, dias) |>
+  summarise(Severidade_mean = mean(Severidade)) |>
+  select(Adjuvante, Taxa, Bloco, Severidade_mean, Tratamento, dias) |> 
+  ungroup()
+
+## Retirando o controle para não afetar no desenho fatorial 3x4+1
+df_sem_controle_media <- df_media_A_Davis |> 
+  filter(!(Adjuvante == "NA" & Taxa == 0)) |> 
+  select(!Tratamento)
+```
+
+## 2.1. Visualização dos Dados
+
+```{r}
+#| label: Severidade-visualização
+
+####### VISUALIZAÇÃO -----------------
+### Gráficos para visualização dos dados  ----------------
+
+## Boxplot do adjuvante e taxa
+df_media_A_Davis |> 
+  ggplot(aes(x = Adjuvante, y = Severidade_mean, fill = Taxa))+
+  geom_boxplot(position = position_dodge(width = 0.8))+
+  geom_point(position = position_dodge(width = 0.8))
+```
+
+```{r}
+#| label: Severidade-boxplots-tratamentos
+
+## Boxplot dos tratamentos
+## geral
+BP_geral_trat <- df_media_A_Davis |> 
+  ggplot(aes(x = reorder(Tratamento, -Severidade_mean), y = Severidade_mean, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "Todos os dias",
+    x = "Tratamento",
+    y = "Severidade média (Escala Davis)")+
+  facet_wrap(~dias)
+# BP_geral_trat
+
+## 3DAA
+BP_3DAA_trat <- df_media_A_Davis |> 
+  filter(dias == "3DAA") |> 
+  ggplot(aes(x = reorder(Tratamento, -Severidade_mean), y = Severidade_mean, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "3DAA",
+    x = "Tratamento",
+    y = "Severidade média (Escala Davis)")
+# BP_3DAA_trat
+
+## 7DAA
+BP_7DAA_trat <- df_media_A_Davis |> 
+  filter(dias == "7DAA") |> 
+  ggplot(aes(x = reorder(Tratamento, -Severidade_mean), y = Severidade_mean, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "7DAA",
+    x = "Tratamento",
+    y = "Severidade média (Escala Davis)")
+# BP_7DAA_trat
+
+## 3DAB
+BP_3DAB_trat <- df_media_A_Davis |> 
+  filter(dias == "3DAB") |> 
+  ggplot(aes(x = reorder(Tratamento, -Severidade_mean), y = Severidade_mean, fill = Tratamento))+
+  geom_boxplot()+
+  labs(
+    title = "3DAB",
+    x = "Tratamento",
+    y = "Severidade média (Escala Davis)")
+# BP_3DAB_trat
+
+# 7DAB
+BP_7DAB_trat <- df_media_A_Davis |> 
+  filter(dias == "7DAB") |> 
+  ggplot(aes(x = reorder(Tratamento, -Severidade_mean), y = Severidade_mean, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  labs(
+    title = "7DAB",
+    x = "Tratamento",
+    y = "Severidade média (Escala Davis)")
+# BP_7DAB_trat
+```
+
+Na figura abaixo está representada o efeito das taxas de aplicação e adjuvantes sobre a severidade ao longo do tempo.
+
+```{r}
+#| label: Severidade-gráficos-ao-longo-dos-dias
+### Gráfico para verificar a severidade ao longo dos dias -------------------
+## Transformando o tempo em contínuo
+df_geral_A_Davis <- df_A_Davis |> 
+  mutate(dias = as.character(dias),
+         dias = recode(dias, 
+                       "3DAA" = "3",
+                       "7DAA" = "7", 
+                       "3DAB" = "10",
+                       "7DAB" = "14"),
+         dias = as.numeric(dias))
+
+# visãp geral dos dados com todos os dias
+df_geral_A_Davis |> 
+  ggplot(aes(x = dias, y = Severidade, color = Adjuvante))+
+  geom_point() +
+  geom_jitter(width = 0.4, height = 0.2)+
+  scale_x_continuous(breaks = c(3, 7, 10, 14))+
+  scale_y_continuous(breaks = c(0,2,4,6,8,10))+
+  geom_smooth(method = "glm", method.args = list(family="poisson"), se=FALSE)+
+  facet_wrap(~Taxa)+
+  labs(title="Efeito da Taxa de Aplicação e Adjuvante na Severidade ao longo do tempo",
+       x="Tempo",
+       y="Severidade dos Danos (Escala Davis)") 
+```
+
+## 2.2. Análise Descritiva
+
+```{r}
+#| label: Severidade-tabela-descritiva
+## Transformando os dados
+tab_descritiva_SEV <- df_media_A_Davis |> 
+  group_by(Tratamento, Adjuvante, Taxa )%>% 
+  summarise(Mean = mean(Severidade_mean), SD = sd(Severidade_mean)) %>% 
+  arrange(Taxa)
+
+## Tabela descritiva
+as.data.frame(tab_descritiva_INC[]) |> 
+  gt() %>%
+  cols_label(
+    Tratamento = md("**Tratamento**"),
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    Mean = md("**Média**"),
+    SD = md("**Desvio**")) %>%
+  tab_header(title = md("***Produtividade***")) %>%
+  tab_options(
+    table.width = pct(95)  # Define a largura da tabela como 100% da área disponível
+  )
+
+```
+
+## 2.3. Análise Inferencial
+
+### a. 3DAA
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Severidade-Pressup-3DAA-SC
+#### 3DAA ------------------
+### Anova SEM testemunha
+anova_sc_3DAA <- df_sem_controle_media |> 
+  filter(dias == "3DAA") |>
+  select(!dias) |> 
+  easyanova::ea2(design = 2, plot = 2) 
+# anova_sc_3DAA
+## Resultados:
+anova_sc_3DAA[[10]]$`residual analysis`
+# CV = 58% !!!! Como faço para reduzir???
+# Normalidade do resíduo: p> 0.05
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-3DAA-SC
+
+# anova_sc_3DAA[[1]]
+# Não há diferença significativa entre os níveis do fator.
+# Não há diferença significativa entre blocos
+# Não há interação entre os fatores
+
+## Tabela bonita da anova 
+data1 <- as.data.frame(anova_sc_3DAA[[1]])
+tratamento_3A <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data1<- cbind( Tratamento  = tratamento_3A, data1)
+data2 <- data1 %>% gt()%>% tab_header(
+  title = md("***Anova da Escala Davis***"), 
+  subtitle = md("**Três dias após primeira aplicação (3DAA)**")) %>%
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) %>%
+  tab_options(table.width = pct(100)) 
+data2
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   NÃO há diferença significativa entre blocos (p \> 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Severidade-Pressup-3DAA-CC
+### Anova COM testemunha
+
+# Comparando oS tratamentoS
+anova_Cc_3DAA <- df_media_A_Davis |> 
+  filter(dias == "3DAA") |> 
+  select(Tratamento, Bloco, Severidade_mean)  |> 
+  easyanova::ea1(design = 2)
+
+## Resultados:
+anova_Cc_3DAA[[4]]$`residual analysis`
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-3DAA-CC
+
+# anova_Cc_3DAA
+## Resultados:
+anova_Cc_3DAA[[1]]
+# Os tratamentos não diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   NÃO há diferença significativa entre blocos (p \> 0.05).
+
+O gráfico abaixo representa visualmente a severidade em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Severidade-BP-3DAA-CC
+BP_3DAA_trat
+```
+
+### b. 7DAA
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Severidade-Pressup-7DAA-SC
+## ANOVA
+### Anova SEM testemunha
+anova_sc_7DAA <- df_sem_controle_media |> 
+  filter(dias == "7DAA") |>
+  select(!dias) |> 
+  easyanova::ea2(design = 2, alpha = 0.05) 
+# anova_sc_7DAA
+
+## Resultados normalidade
+anova_sc_7DAA[[10]]$`residual analysis`
+# normalidade do resíduo (P>0.05)
+# homocedasticidade  do resíduo (P > 0.05)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\>0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-7DAA-SC
+
+## Tabela bonita Anova 
+data_3 <- as.data.frame(anova_sc_7DAA[[1]])
+tratamento_7A <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data3<- cbind( Tratamento  = tratamento_7A, data_3)
+data_4 <- data_3 %>% gt()%>% tab_header(
+  title = md("***Anova da Escala Davies***"), 
+  subtitle = md("**Sete dias após primeira aplicação (7DAA)**")) %>%
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) %>%
+  tab_options(table.width = pct(100)) 
+data_4
+
+# Não há diferença significativa entre os níveis do fator.
+# Não há diferença significativa entre blocos
+# Não há interação entre os fatores
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   NÃO há diferença significativa entre blocos (p \> 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+### Anova COM testemunha
+
+# comparando o tratamento 1 (controle) com o tratamento 2 (Adjuvante = Aureo, Taxa = 10)
+anova_Cc_7DAA <- df_media_A_Davis |> 
+  filter(dias == "7DAA") |> 
+  select(Tratamento, Bloco, Severidade_mean)  |> 
+  easyanova::ea1(design = 2)
+## Resultados:
+anova_Cc_7DAA[[4]]$`residual analysis`
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-7DAA-CC
+
+# anova_Cc_7DAA
+## Resultados:
+anova_Cc_7DAA[[1]]
+# Os tratamentos diferem SIM estatisticamente entre si!
+anova_Cc_7DAA[[2]]
+```
+
+Pela análise de variância a 5% de significância:
+
+-   Há SIM diferença significativa entre os tratamentos (p\<0.05);
+
+-   NÃO há diferença significativa entre blocos (p\>0.05).
+
+O gráfico abaixo representa visualmente a severidade em cada tratamento no dia 7DAA.
+
+```{r}
+#| label: Severidade-BP-7DAA-CC
+BP_7DAA_trat
+```
+
+### c. 3DAB
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Severidade-Pressup-3DAB-SC
+## ANOVA
+### Anova SEM testemunha
+anova_sc_3DAB <- df_sem_controle_media |> 
+  filter(dias == "3DAB") |>
+  select(!dias) |> 
+  easyanova::ea2(design = 2, alpha = 0.05) 
+# anova_sc_3DAB
+
+## Resultados da normalidade
+anova_sc_3DAB[[10]]$`residual analysis`
+# normalidade do resíduo SHAPIRO (P<0.05)
+lillie.test(anova_sc_3DAB$`Residual analysis`$residuals)
+# Normalidade LILLIEFORS (p>0.05)
+# homocedasticidade  do resíduo (P > 0.05)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p \< 0.05).
+
+-   Pelo teste de Lilliefors, os resíduos são SIM normalmente distribuídos (p \> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-3DAB-SC
+
+# Tabela bonita anova 
+data_5 <- as.data.frame(anova_sc_3DAB[[1]])
+tratamento_3B <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data_5<- cbind( Tratamento  = tratamento_3B, data_5)
+data_6 <- data_5 %>% gt()%>% tab_header(
+  title = md("***Anova da Escala Davis***"), 
+  subtitle = md("**Três dias após segunda aplicação (3DAB)**")) %>%
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) %>%
+  tab_options(table.width = pct(100)) 
+data_6
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+
+
+
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Severidade-Pressup-3DAB-CC
+### Anova COM testemunha
+
+# comparando o tratamento 1 (controle) com o tratamento 2 (Adjuvante = Aureo, Taxa = 10)
+anova_Cc_3DAB <- df_media_A_Davis |> 
+  filter(dias == "3DAB") |> 
+  select(Tratamento, Bloco, Severidade_mean)  |> 
+  easyanova::ea1(design = 2)
+
+## Resultados:
+anova_Cc_3DAB[[4]]$`residual analysis`
+
+lillie.test(anova_Cc_3DAB$`Residual analysis`$residuals)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p \< 0.05).
+
+-   Pelo teste de Lilliefors, os resíduos são SIM normalmente distribuídos (p \> 0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-3DAB-CC
+# anova_Cc_3DAB
+## Resultados:
+anova_Cc_3DAB[[1]]
+# Os tratamentos NÃO diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a severidade em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Severidade-BP-3DAB-CC
+BP_3DAB_trat
+```
+
+### d. 7DAB
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Severidade-Pressup-7DAB-SC
+## ANOVA
+### Anova SEM testemunha
+anova_sc_7DAB <- df_sem_controle_media |> 
+  filter(dias == "7DAB") |>
+  select(!dias) |> 
+  easyanova::ea2(design = 2) 
+# anova_sc_7DAB
+
+## Resultados normalidade:
+anova_sc_7DAB[[10]]$`residual analysis`
+# normalidade do resíduo SHAPIRO (P = 0.021)
+lillie.test(anova_sc_7DAB$`Residual analysis`$residuals)
+# Normalidade LILLIEFORS (p = 0.048) CONSIDERA-SE NORMAL????
+# homocedasticidade  do resíduo (P > 0.05)
+
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p\<0.05).
+
+-   Pelo teste de Lilliefors, os resíduos são "QUASE" normalmente distribuídos (p = 0.048).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-7DAB-SC
+
+## Anova tabela bonita 
+data_7 <- as.data.frame(anova_sc_7DAB[[1]])
+tratamento_7B <- c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos " )
+data_7<- cbind( Tratamento  = tratamento_7B, data_7)
+data_8 <- data_5 %>% gt()%>% tab_header(
+  title = md("***Anova da Escala Davies***"), 
+  subtitle = md("**Sete  dias após segunda aplicação (7DAB)**")) %>%
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) %>%
+  tab_options(table.width = pct(100)) 
+data_8
+# Não há diferença significativa entre os níveis do fator.
+# HÁ SIM diferença significativa entre blocos
+# Não há interação entre os fatores
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os níveis do fator (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05);
+
+-   NÃO há interação entre os fatores (p \> 0.05).
+
+#### II - Com testemunha
+
+##### Pressupostos
+
+```{r}
+#| label: Severidade-Pressup-7DAB-CC
+### Anova COM testemunha
+
+# comparando os tratamentos entre si
+anova_Cc_7DAB <- df_media_A_Davis |> 
+  filter(dias == "7DAB") |> 
+  select(Tratamento, Bloco, Severidade_mean)  |> 
+  easyanova::ea1(design = 2)
+## Resultados:
+anova_Cc_7DAB[[4]]$`residual analysis`
+
+lillie.test(anova_Cc_7DAB$`Residual analysis`$residuals)
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos NÃO são normalmente distribuídos (p\<0.05).
+
+-   Pelo teste de Lilliefors, os resíduos são SIM normalmente distribuídos (p\>0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos tratamentos são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Severidade-ANOVA-7DAB-CC
+# anova_Cc_7DAB
+## Resultados:
+anova_Cc_7DAB[[1]]
+# Os tratamentos NÃO diferem estatisticamente entre si!
+```
+
+Pela análise de variância a 5% de significância:
+
+-   NÃO há diferença significativa entre os tratamentos (p \> 0.05);
+
+-   Há SIM diferença significativa entre blocos (p \< 0.05).
+
+O gráfico abaixo representa visualmente a severidade em cada tratamento no dia 3DAA.
+
+```{r}
+#| label: Severidade-BP-7DAB-CC
+BP_7DAB_trat
+```
+
+# 3. Produtividade
+
+```{r}
+#| label: Produtividade-transformações
+#| include: false
+## Nomeando os tratamentos
+df_trat_prod <- df_produtividade |> 
+  mutate(
+    # Criar uma coluna com a indentificação do tratamento
+    Tratamento = factor(case_when(
+      Adjuvante == "Ta" ~ "1",
+      Adjuvante == "Aureo" & Taxa == "10" ~ "2",
+      Adjuvante == "Silwet" & Taxa == "10" ~ "3",
+      Adjuvante == "Ochima" & Taxa == "10" ~ "4",
+      Adjuvante == "nad" & Taxa == "10" ~ "5",
+      Adjuvante == "Aureo" & Taxa == "30" ~ "6",
+      Adjuvante == "Silwet" & Taxa == "30" ~ "7",
+      Adjuvante == "Ochima" & Taxa == "30" ~ "8",
+      Adjuvante == "nad" & Taxa == "30" ~ "9",
+      Adjuvante == "Aureo" & Taxa == "120" ~ "10",
+      Adjuvante == "Silwet" & Taxa == "120" ~ "11",
+      Adjuvante == "Ochima" & Taxa == "120" ~ "12",
+      Adjuvante == "nad" & Taxa == "120" ~ "13"
+    )),
+    # reorganizar os fatores para ordem crescente de 1 a 13
+    Tratamento = fct_relevel(
+      Tratamento,
+      "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13")) |> 
+  select(Tratamento, everything())
+
+## Sem controle
+prod_SEM_controle <- df_produtividade |> 
+  filter(!(Adjuvante == "Ta"))
+```
+
+## 3.1. Visualização dos Dados
+
+Nas figuras abaixo, estão representadas o efeito das taxas de aplicação e adjuvantes sobre a produtividade.
+
+```{r}
+#| label: Produtividade-BP-Adjuvante
+#gráfico de adjuvante
+df_produtividade |> 
+  mutate(fct_relevel(Adjuvante, "Ta",  "nad","Ochima",  "Silwet", "Aureo")) |> 
+  ggplot(aes(y = Prod, x = reorder(Adjuvante, +Prod), fill = Adjuvante)) + 
+  geom_boxplot(position = position_dodge( width = 0.80)) +
+  theme(legend.position = "none")+
+  labs(x = "Adjuvante ", 
+       y = "Produtividade/ha ", 
+       size = 15) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 5500)) +
+  geom_point() +
+  scale_x_discrete(labels= c("nad"= "Sem adjuavente", "Ta"= "Testemunha"))
+
+```
+
+```{r}
+#| label: Produtividade-BP-Taxa
+#Gráfico da taxa de aplicação 
+df_produtividade |> 
+  ggplot(aes(y = Prod, x = reorder(Taxa, +Prod), fill = Taxa)) + 
+  geom_boxplot( position = position_dodge( width = 0.80)) +
+  theme(legend.position = "none")+ 
+  labs(x = "Taxa aplicação  ", y = "Produtividade/ha", size = 15) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 5500)) +
+  geom_point() 
+```
+
+```{r}
+#| label: Produtividade-BP-Tratamentos
+## Boxplot tratamentos
+BP_prod_tratamento <- df_trat_prod |> 
+  ggplot(aes(x = reorder(Tratamento, +Prod), y = Prod, fill = Tratamento))+
+  geom_boxplot()+
+  geom_point()+
+  theme(legend.position = "none")+ 
+  labs(x = "Taxa aplicação  ", y = "Produtividade/ha", size = 15) +
+  labs(
+    title = "",
+    x = "Tratamentos",
+    y = "Produtividade/Ha")
+BP_prod_tratamento
+```
+
+## 3.2. Análise Descritiva
+
+```{r}
+#| label: Produtividade-tabela-descritiva
+## Transformando os dados
+tab_descritiva_prod <- df_produtividade |> 
+  group_by(Adjuvante, Taxa )%>% 
+  summarise(Mean = mean(Prod), SD = sd(Prod)) %>% 
+  arrange(Adjuvante)
+
+## Tabela descritiva
+as.data.frame(tab_descritiva_prod[]) |> 
+  mutate(
+    Adjuvante = c("Aureo", "Aureo", "Aureo", "Sem adjuvante", "Sem adjuvante", "Sem adjuvante", 
+                  "Ochima", "Ochima", "Ochima", "Silwet", "Silwet", "Silwet", "Testemunha")) |> 
+  gt() %>%
+  cols_label(
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    Mean = md("**Média**"),
+    SD = md("**Desvio**")) %>%
+  tab_header(title = md("***Produtividade***")) %>%
+  tab_options(
+    table.width = pct(95)  # Define a largura da tabela como 100% da área disponível
+  )
+```
+
+## 3.3. Análise Inferencial
+
+#### I - Sem testemunha
+
+##### Pressupostos da ANOVA
+
+```{r}
+#| label: Produtividade-Pressup-SEM-c
+
+### ANOVA Sem testemunha -------------
+anova_SEM_C_prod <- prod_SEM_controle |> 
+  ea2(design = 2, list = FALSE)
+# anova_SEM_C_prod
+
+## Resultados:
+anova_SEM_C_prod[[10]]$`residual analysis`
+# Normalidade do resíduo: p>0.05
+# homocedasticidade da variância: p>0.05
+```
+
+-   Pelo teste Shapiro-Wilk, os resíduos são normalmente distribuídos (p\>0.05).
+
+-   Pelo teste de Bartlett, as variâncias dos fatores são iguais (p\>0.05).
+
+##### ANOVA
+
+```{r}
+#| label: Produtividade-tabela-anova-SEM-c
+
+# anova_SEM_C_prod[[1]]
+# Tabela bonita da anova sem controle
+tab_anova_SEM_c_prod <- as.data.frame(anova_SEM_C_prod[[1]]) %>% 
+  mutate(Tratamento = c("Adjuvante", "Taxa", "Blocos ", "Ajuvante:Taxa", "Resíduos ")) |> 
+  select(Tratamento, everything()) |> 
+  gt()%>%
+  tab_header(title = md("***Anova da produtividade***")) %>%
+  tab_source_note(source_note = md( "**valor de  α = 0.05** ")) %>%
+  tab_options(table.width = pct(100)) 
+tab_anova_SEM_c_prod
+
+
+## Resultados
+# Há SIM diferença significativa entre os níveis do fator.
+# NÃO há diferença significativa entre blocos
+# Há SIM interação entre os fatores
+
+```
+
+Pela análise de variância a 5% de significância:
+
+-   Há SIM diferença significativa entre os níveis dos dois fatores (p \< 0.05);
+
+-   NÃO há diferença significativa entre blocos (p \> 0.05);
+
+-   Há SIM interação entre os fatores (p \< 0.05).
+
+##### Teste post hoc (comparações múltiplas)
+
+```{r}
+#| label: Produtividade-tabela-ADJUVANTE-SEM-c
+
+# Tabela post hoc: ADJUVANTE
+# anova_SEM_C_prod[[2]]
+tab_ADJUV_post_hoc_prod <- as.data.frame(anova_SEM_C_prod[[2]]) |> 
+  mutate(Adjuvante = c("Aureo","Ochima", "Silwet", "Sem adjuvante")) |> 
+  select(Adjuvante, adjusted.mean, tukey) |> 
+  gt() |> 
+  cols_label(Adjuvante = md("**Adjuvante**"), 
+             adjusted.mean = md("**Média Ajustada**"), 
+             tukey = md("**Tukey**")) |> 
+  tab_header(title = md("***Produtividade***"),
+             subtitle = md("**Análise Post Hoc ajduvante**")) |> 
+  tab_source_note( 
+    source_note = md("***Letras iguais: Níveis não diferem entre si a α = 0.05***")) |> 
+  tab_options(table.width = pct(75))
+tab_ADJUV_post_hoc_prod
+
+
+```
+
+```{r}
+#| label: Produtividade-tabela-TAXA-SEM-c
+
+# Tabela post hoc: TAXA
+tab_TAXA_post_hoc_prod <- as.data.frame(anova_SEM_C_prod[[4]]) |> 
+  select(factor_2, adjusted.mean, tukey) |>
+  # tornando a tabela mais bonita
+  gt() |> 
+  cols_label(factor_2 = md("**Taxa**"), adjusted.mean = md("**Média ajustada**"), tukey = md('**Tukey**')) %>%
+  tab_header(title = md("***Produtividade*** "), subtitle = md("**Análise Post Hoc  da Taxa de aplicação**")) %>% 
+  tab_source_note(source_note = md("***Letras iguais: Níveis não diferem entre si a α = 0.05***")) %>%
+  tab_options(table.width = pct(70))
+
+tab_TAXA_post_hoc_prod
+```
+
+##### 
