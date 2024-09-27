@@ -19,7 +19,7 @@ df_incidencia_A <- df_original_A_contagem |>
          Dias = factor(Dias),
          Incidencia_percent = contagem/25 * 100)
 
-writexl::write_xlsx(df_incidencia_A, "dados/Contagem de Pantas Atacadas/df_incidencia_A")
+#writexl::write_xlsx(df_incidencia_A, "dados/Contagem de Pantas Atacadas/df_incidencia_A")
 
 
 

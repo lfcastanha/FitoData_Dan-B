@@ -10,9 +10,121 @@ library(DescTools) # teste de Dunnett
 
 
 #### Load data --------------------------
-df_A_Davis <- read_excel("../dados/Escala Davis/df_A_Davis.xlsx") |> 
+df_A_Davis <- read_excel("dados/Escala Davis/df_A_Davis.xlsx") |> 
   mutate_if(is.character, as.factor) |> 
-  mutate(Taxa = as.factor(Taxa))
+  mutate(Taxa = as.factor(Taxa),
+         dias = fct_relevel(dias, "3DAA", "7DAA", "3DAB", "7DAB"),
+         Taxa = fct_relevel(Taxa, "0", "10", "30", "120"),
+         Adjuvante = fct_relevel(Adjuvante, "Aureo", "Silwet", "Ochima", "NA")
+  ) |> 
+  arrange(Taxa)
+
+## Dividindo as plantas segundo o grau de Severidade (=0, =1,2, >=3) -----------------
+perc_plants <- df_A_Davis|> 
+  # criando colunas que indicam o valor de severidade
+  mutate(davis_0 = as.integer(Severidade == 0),
+         davis_1_2 = as.integer(Severidade %in% c(1, 2)),
+         davis_3_mais = as.integer(Severidade >= 3)) |> 
+  group_by(Adjuvante, Taxa, Bloco, Tratamento, dias) |> 
+  # Criando colunas com as porcentagens
+  summarise(perc_plant_0 = round(mean(davis_0)*100, 1),
+            perc_plant_1_2 = round(mean(davis_1_2)*100, 1),
+            perc_plant_3_mais = round(mean(davis_3_mais)*100, 1)) |> 
+  ungroup()
+
+## comparando para ver se há influencia do bloco
+anova_D3_0 <- perc_plants |> 
+  filter(Tratamento != 1,
+         dias == "3DAA") |> 
+  select(Adjuvante, Taxa, Bloco, perc_plant_0)|>
+  easyanova::ea2(design = 2)
+
+# Resultados:
+anova_D3_0[[10]]$`residual analysis`
+anova_D3_0[[1]]
+
+### tabela de comparação das porcentagens 
+## Como não há efeito de bloco, faremos uma média das porcentagens
+med_perc <- perc_plants |>  
+  group_by(Tratamento, Adjuvante, Taxa, dias) |> 
+  summarise(med_dav_0 = mean(perc_plant_0),
+            med_dav_1_2 = mean(perc_plant_1_2),
+            med_dav_3 = mean(perc_plant_3_mais)) |> 
+  ungroup()|> 
+  arrange(Taxa)
+view(med_perc)
+
+
+
+### Fazer tabela separada por dias ------------------
+## Davis = 0
+tab_dav_0 <- med_perc |> 
+  select(Tratamento, Adjuvante, Taxa, dias, med_dav_0) |> 
+  pivot_wider(names_from = dias, values_from = med_dav_0) |> 
+  mutate(across(4:7, ~ round(.x, 1))) |> 
+  gt() |> 
+  cols_label(
+    Tratamento = md("**Tratamento**"),
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    "3DAA" = md("**3DAA**"),
+    "7DAA" = md("**7DAA**"),
+    "3DAB" = md("**3DAB**"),
+    "7DAB" = md("**7DAB**"),
+    ) |> 
+  tab_header(
+    title = md("***Severidade 0 (Escala Davis)***"),
+    subtitle = md("**Porcentagem média de plantas danificadas por _S. frugiperda_**")) |> 
+  tab_options(
+    table.width = pct(80)  # Define a largura da tabela como % da área disponível
+  )
+tab_dav_0
+
+## Davis = 1 e 2
+tab_dav_1_2 <- med_perc |> 
+  select(Tratamento, Adjuvante, Taxa, dias, med_dav_1_2) |> 
+  pivot_wider(names_from = dias, values_from = med_dav_1_2) |> 
+  mutate(across(4:7, ~ round(.x, 1))) |> 
+  gt() |> 
+  cols_label(
+    Tratamento = md("**Tratamento**"),
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    "3DAA" = md("**3DAA**"),
+    "7DAA" = md("**7DAA**"),
+    "3DAB" = md("**3DAB**"),
+    "7DAB" = md("**7DAB**"),
+  ) |> 
+  tab_header(
+    title = md("***Severidade 1 e 2 (Escala Davis)***"),
+    subtitle = md("**Porcentagem média de plantas danificadas por _S. frugiperda_**")) |> 
+  tab_options(
+    table.width = pct(80)  # Define a largura da tabela como % da área disponível
+  )
+tab_dav_1_2
+
+## Davis >= 3
+tab_dav_3_mais <- med_perc |> 
+  select(Tratamento, Adjuvante, Taxa, dias, med_dav_3) |> 
+  pivot_wider(names_from = dias, values_from = med_dav_3) |> 
+  mutate(across(4:7, ~ round(.x, 1))) |> 
+  gt() |> 
+  cols_label(
+    Tratamento = md("**Tratamento**"),
+    Adjuvante = md("**Adjuvante**"), 
+    Taxa = md("**Taxa**"),
+    "3DAA" = md("**3DAA**"),
+    "7DAA" = md("**7DAA**"),
+    "3DAB" = md("**3DAB**"),
+    "7DAB" = md("**7DAB**"),
+  ) |> 
+  tab_header(
+    title = md("***Severidade ≥ 3 (Escala Davis)***"),
+    subtitle = md("**Porcentagem média de plantas danificadas por _S. frugiperda_**")) |> 
+  tab_options(
+    table.width = pct(80)  # Define a largura da tabela como % da área disponível
+  )
+tab_dav_3_mais
 
 #### Transformando os dados ----------------------------
 ## Reduzindo a severidade das 25 plantas para uma média por bloco
